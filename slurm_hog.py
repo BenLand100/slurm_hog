@@ -4,7 +4,7 @@ import argparse
 import sqlite3
 import json
 import time
-import os, sys
+import os, sys, signal
 import subprocess
 import threading
 
@@ -13,6 +13,10 @@ db = None
 def setup_database(args):
     global db
     db = sqlite3.connect(args.db)
+
+def sub_wait(subproc,semp):
+    subproc.wait()
+    semp.release()
 
 def init(args):
     if os.path.exists(args.db):
@@ -46,10 +50,7 @@ def hog_launch(semp,executable,cwd,stdout,stderr,env):
         ferr=open(stdout if stdout else os.devnull,'w')
         env=json.loads(env)
         subproc = subprocess.Popen([executable],stdout=fout,stderr=ferr,env=env,preexec_fn=os.setsid)
-        def sub_wait(subproc):
-            subproc.wait()
-            semp.release()
-        thread = threading.Thread(target=sub_wait,args=(subproc,))
+        thread = threading.Thread(target=sub_wait,args=(subproc,semp))
         thread.start()
         return subproc
     except:
@@ -57,12 +58,10 @@ def hog_launch(semp,executable,cwd,stdout,stderr,env):
         return None
 
 def hog_alloc(jobs,semp):
-    isolvl = db.isolation_level
-    db.isolation_level = None
     c = db.cursor()
     print('hog allocating jobs')
     while semp.acquire(blocking=False):
-        c.execute('BEGIN;')
+        c.execute("BEGIN EXCLUSIVE;")
         c.execute("SELECT jobid, exec, cwd, stdout, stderr, env FROM jobs WHERE status='waiting' LIMIT 1;")
         row = c.fetchone()
         if row is None:
@@ -70,6 +69,7 @@ def hog_alloc(jobs,semp):
             break
         jobid,executable,cwd,stdout,stderr,env = row
         c.execute("UPDATE jobs SET status='running',heartbeat=? WHERE jobid = ?;",(time.time(),jobid))
+        db.commit()
         subproc = hog_launch(semp,executable,cwd,stdout,stderr,env)
         if subproc:
             print('allocated',jobid,executable)
@@ -77,8 +77,7 @@ def hog_alloc(jobs,semp):
         else:
             print('failed to allocate',jobid)
             c.execute("UPDATE jobs SET status='failed' WHERE jobid = ?;",(jobid,))
-        c.execute('COMMIT;')
-    db.isolation_level = isolvl
+            db.commit()
 
 def hog_check(jobs):
     c = db.cursor()
@@ -148,9 +147,6 @@ def monitor_check():
 def monitor_launch(semp):
     print(__file__)
     subproc = subprocess.Popen(['./slurm_hog.py','hog','-s',str(args.simultaneous),'-t',str(args.time),'-m',str(args.moratorium)])
-    def sub_wait(subproc,semp):
-        subproc.wait()
-        semp.release()
     thread = threading.Thread(target=sub_wait,args=(subproc,semp))
     thread.start()
 
