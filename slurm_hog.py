@@ -60,8 +60,9 @@ def hog_alloc(jobs,semp):
     isolvl = db.isolation_level
     db.isolation_level = None
     c = db.cursor()
-    c.execute('BEGIN EXCLUSIVE;');
+    print('hog allocating jobs')
     while semp.acquire(blocking=False):
+        c.execute('BEGIN;')
         c.execute("SELECT jobid, exec, cwd, stdout, stderr, env FROM jobs WHERE status='waiting' LIMIT 1;")
         row = c.fetchone()
         if row is None:
@@ -76,12 +77,14 @@ def hog_alloc(jobs,semp):
         else:
             print('failed to allocate',jobid)
             c.execute("UPDATE jobs SET status='failed' WHERE jobid = ?;",(jobid,))
-    c.execute('COMMIT;')
+        c.execute('COMMIT;')
     db.isolation_level = isolvl
 
 def hog_check(jobs):
     c = db.cursor()
-    for jobid in jobs.keys():
+    jobids = list(jobs.keys())
+    print('hog running checks')
+    for jobid in jobids:
         print('checking',jobid)
         subproc = jobs[jobid]
         c.execute('SELECT status FROM jobs WHERE jobid = ?;',(jobid,))
@@ -109,13 +112,14 @@ def hog(args):
     args.moratorium = args.moratorium*60*60
     jobs = {}
     try:
+        print('a wild hog has appeared')
         while args.time-(time.time()-start) > 120: #quit with 2  minutes to spare
             hog_check(jobs)
-            print(jobs)
+            print('allocated jobs: ',len(jobs))
             if args.time-(time.time()-start) >= args.moratorium and semp.acquire(timeout=10):
                 semp.release()
                 hog_alloc(jobs,semp)
-                print(jobs)
+                print('allocated jobs: ',len(jobs))
             if len(jobs) == 0:
                 break #no jobs
             if semp.acquire(blocking=False): #not fully allocated, wait a bit
@@ -130,6 +134,7 @@ def hog(args):
             c.execute("UPDATE jobs SET status='outoftime' WHERE jobid = ?;",(jobid,))
             subproc = jobs[jobid]
             os.killpg(os.getpgid(subproc.pid), signal.SIGTERM) #does this release semp?
+        db.commit()
         
 def monitor_check():
     c = db.cursor()
@@ -138,6 +143,7 @@ def monitor_check():
     stalejobs = [row[0] for row in c.fetchall()]
     for jobid in stalejobs:
         c.execute("UPDATE jobs SET status='stale' WHERE jobid=?",(jobid,))
+    db.commit()
 
 def monitor_launch(semp):
     print(__file__)
@@ -156,6 +162,7 @@ def monitor(args):
             monitor_check()
             while semp.acquire(timeout=10):
                 monitor_launch(semp)
+                time.sleep(10)
     except KeyboardInterrupt:
         print('monitor ctrl-c\'d')
 
