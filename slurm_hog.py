@@ -37,7 +37,12 @@ def submit(args):
     cwd = os.getcwd()
     env = json.dumps(dict(**os.environ))
     c = db.cursor()
+    c.execute("BEGIN;")
     c.execute("INSERT INTO jobs (exec,cwd,stdout,stderr,env,status,heartbeat) VALUES (?,?,?,?,?,'waiting',0);",(args.executable,cwd,args.stdout,args.stderr,env))
+    c.execute("SELECT last_insert_rowid() FROM jobs;")
+    row = c.fetchone()
+    c.execute("COMMIT;")
+    print(row[0])
 
 def cancel(args):
     setup_database(args)
@@ -73,12 +78,13 @@ def show(args):
             for jobid,status in c.fetchall():
                 print(jobid,' ',status)
 
-def hog_launch(semp,executable,cwd,stdout,stderr,env):
+def hog_launch(semp,jobid,executable,cwd,stdout,stderr,env):
     try:
         os.chdir(cwd)
         fout=open(stdout if stdout else os.devnull,'w')
         ferr=open(stdout if stdout else os.devnull,'w')
         env=json.loads(env)
+        env['JOBID'] = jobid
         subproc = subprocess.Popen([executable],stdout=fout,stderr=ferr,env=env,preexec_fn=os.setsid)
         thread = threading.Thread(target=sub_wait,args=(subproc,semp))
         thread.start()
@@ -101,7 +107,7 @@ def hog_alloc(jobs,semp):
         jobid,executable,cwd,stdout,stderr,env = row
         c.execute("UPDATE jobs SET status='running',heartbeat=? WHERE jobid = ?;",(time.time(),jobid))
         c.execute("COMMIT;")
-        subproc = hog_launch(semp,executable,cwd,stdout,stderr,env)
+        subproc = hog_launch(semp,jobid,executable,cwd,stdout,stderr,env)
         if subproc:
             print('allocated',jobid,executable)
             jobs[jobid] = subproc
@@ -178,7 +184,7 @@ def monitor_check():
         c.execute("UPDATE jobs SET status='stale' WHERE jobid=?",(jobid,))
 
 def monitor_launch(args,semp):
-    cmd = args.command_prefix.split()+[__file__,'--db',args.db,'hog','-s',str(args.simultaneous),'-t',str(args.time),'-m',str(args.moratorium)]
+    cmd = args.command_prefix.split()+[__file__,'--db',args.db,'--timeout',args.timeout,'hog','-s',str(args.simultaneous),'-t',str(args.time),'-m',str(args.moratorium)]
     print(cmd)
     subproc = subprocess.Popen(cmd)
     thread = threading.Thread(target=sub_wait,args=(subproc,semp))
