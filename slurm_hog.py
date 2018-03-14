@@ -185,7 +185,6 @@ def monitor_check():
 
 def monitor_launch(args,semp):
     cmd = args.command_prefix.split()+[__file__,'--db',args.db,'--timeout',str(args.timeout),'hog','-s',str(args.simultaneous),'-t',str(args.time),'-m',str(args.moratorium)]
-    print(cmd)
     subproc = subprocess.Popen(cmd)
     thread = threading.Thread(target=sub_wait,args=(subproc,semp))
     thread.start()
@@ -242,7 +241,7 @@ if __name__ == "__main__":
 
     monitor_parser = subparsers.add_parser('monitor',help='submit and monitor hog jobs on the slurm backend')
     monitor_parser.set_defaults(func=monitor)
-    monitor_parser.add_argument('-c','--command-prefix',default='srun -A fc_oggroup -p savio -t 4320 --mem 64G -N 1 -c 20 --qos savio_normal',help='command prefix (srun ...) to launch hog jobs on compute nodes') #not ideal, could compute -t
+    monitor_parser.add_argument('-c','--command-prefix',default='srun -A fc_oggroup -p savio -t 4320 --mem 62G -N 1 -c 20 --qos savio_normal',help='command prefix (srun ...) to launch hog jobs on compute nodes') #not ideal, could compute -t
     monitor_parser.add_argument('-b','--batches',type=int,default=1,help='number of hog jobs to run at once')
     monitor_parser.add_argument('-s','--simultaneous',type=int,default=20,help='number of simultaneous processes per hog job')
     monitor_parser.add_argument('-t','--time',type=int,default=72,metavar='HOURS',help='max wall time of each hog job')
