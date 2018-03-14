@@ -200,7 +200,7 @@ def monitor(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='queues jobs to run in batches on a slurm queue')
     parser.add_argument('--db',metavar='FILE',default='jobs.sqlite',help='sqlite database to interact with')
-    parser.add_argument('--timeout',metavar='SECONDS',default=60,help='sqlite database timeout')
+    parser.add_argument('--timeout',metavar='SECONDS',type=int,default=60,help='sqlite database timeout')
     subparsers = parser.add_subparsers(dest='subcommand',metavar='subcommand',help='use `[subcommand] --help` for additional help')
     subparsers.required = True
     
