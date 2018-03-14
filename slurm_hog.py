@@ -168,7 +168,8 @@ def monitor(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='queues jobs to run in batches on a slurm queue')
     parser.add_argument('--db',metavar='file',default='jobs.sqlite',help='sqlite database to interact with')
-    subparsers = parser.add_subparsers(title='subcommands',description='valid subcomands')
+    subparsers = parser.add_subparsers(title='subcommands',dest='subcommand')
+    subparsers.required = True
     
     init_parser = subparsers.add_parser('init',help='create a new jobs database')
     init_parser.set_defaults(func=init)
@@ -198,7 +199,4 @@ if __name__ == "__main__":
     monitor_parser.add_argument('-m','--moratorium',default=12,type=int,help='minimum wall time remaining required to submit a job (hours)')
     
     args = parser.parse_args()
-    args.func(args)
-    
-    
-    
+    args.func(args) 
