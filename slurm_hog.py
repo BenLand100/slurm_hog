@@ -84,7 +84,7 @@ def hog_launch(semp,jobid,executable,cwd,stdout,stderr,env):
         fout=open(stdout if stdout else os.devnull,'w')
         ferr=open(stdout if stdout else os.devnull,'w')
         env=json.loads(env)
-        env['JOBID'] = jobid
+        env['JOBID'] = str(jobid)
         subproc = subprocess.Popen([executable],stdout=fout,stderr=ferr,env=env,preexec_fn=os.setsid)
         thread = threading.Thread(target=sub_wait,args=(subproc,semp))
         thread.start()
