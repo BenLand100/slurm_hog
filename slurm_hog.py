@@ -184,7 +184,7 @@ def monitor_check():
         c.execute("UPDATE jobs SET status='stale' WHERE jobid=?",(jobid,))
 
 def monitor_launch(args,semp):
-    cmd = args.command_prefix.split()+[__file__,'--db',args.db,'--timeout',args.timeout,'hog','-s',str(args.simultaneous),'-t',str(args.time),'-m',str(args.moratorium)]
+    cmd = args.command_prefix.split()+[__file__,'--db',args.db,'--timeout',str(args.timeout),'hog','-s',str(args.simultaneous),'-t',str(args.time),'-m',str(args.moratorium)]
     print(cmd)
     subproc = subprocess.Popen(cmd)
     thread = threading.Thread(target=sub_wait,args=(subproc,semp))
