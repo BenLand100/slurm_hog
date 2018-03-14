@@ -123,7 +123,7 @@ def hog(args):
                 break #no jobs
             if semp.acquire(blocking=False): #not fully allocated, wait a bit
                 semp.release()
-                time.sleep(10)
+                time.sleep(60)
     except KeyboardInterrupt:
         print('hog ctrl-c\'d')
     if len(jobs) > 0: #reset any jobs 
@@ -145,9 +145,10 @@ def monitor_check():
     for jobid in stalejobs:
         c.execute("UPDATE jobs SET status='stale' WHERE jobid=?",(jobid,))
 
-def monitor_launch(semp):
-    print(__file__)
-    subproc = subprocess.Popen(['./slurm_hog.py','hog','-s',str(args.simultaneous),'-t',str(args.time),'-m',str(args.moratorium)])
+def monitor_launch(args,semp):
+    cmd = args.command_prefix.split()+[__file__,'--db',args.db,'hog','-s',str(args.simultaneous),'-t',str(args.time),'-m',str(args.moratorium)]
+    print(cmd)
+    subproc = subprocess.Popen(cmd)
     thread = threading.Thread(target=sub_wait,args=(subproc,semp))
     thread.start()
 
@@ -158,8 +159,8 @@ def monitor(args):
         while True:
             monitor_check()
             while semp.acquire(timeout=10):
-                monitor_launch(semp)
-                time.sleep(10)
+                monitor_launch(args,semp)
+                time.sleep(1)
     except KeyboardInterrupt:
         print('monitor ctrl-c\'d')
 
@@ -190,8 +191,9 @@ if __name__ == "__main__":
 
     monitor_parser = subparsers.add_parser('monitor',help='submit and monitor hog jobs on the slurm backend')
     monitor_parser.set_defaults(func=monitor)
+    monitor_parser.add_argument('-c','--command-prefix',default='srun -A fc_oggroup -p savio -t 4320 --mem 64G -N 1 -c 20 --qos savio_normal',help='command prefix (srun ...) to launch hog jobs on compute nodes') #not ideal, could compute -t
     monitor_parser.add_argument('-b','--batches',type=int,default=1,help='number of hog jobs to run at once')
-    monitor_parser.add_argument('-s','--simultaneous',type=int,default=24,help='number of simultaneous processes per hog job')
+    monitor_parser.add_argument('-s','--simultaneous',type=int,default=20,help='number of simultaneous processes per hog job')
     monitor_parser.add_argument('-t','--time',type=int,default=72,help='max wall time of each hog job (hours)')
     monitor_parser.add_argument('-m','--moratorium',default=12,type=int,help='minimum wall time remaining required to submit a job (hours)')
     
