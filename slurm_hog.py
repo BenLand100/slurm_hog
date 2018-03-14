@@ -153,7 +153,7 @@ def hog(args):
         while args.time-(time.time()-start) > 120: #quit with 2  minutes to spare
             hog_check(jobs)
             print('allocated jobs: ',len(jobs))
-            if args.time-(time.time()-start) >= args.moratorium and semp.acquire(timeout=10):
+            if args.time-(time.time()-start) >= args.moratorium and semp.acquire(timeout=60):
                 semp.release()
                 hog_alloc(jobs,semp)
                 print('allocated jobs: ',len(jobs))
@@ -177,7 +177,7 @@ def hog(args):
         
 def monitor_check():
     c = db.cursor()
-    stale = time.time()
+    stale = time.time() - 5*60
     c.execute("SELECT jobid FROM jobs WHERE status='running' AND heartbeat<?",(stale,))
     stalejobs = [row[0] for row in c.fetchall()]
     for jobid in stalejobs:
