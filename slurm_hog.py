@@ -10,10 +10,13 @@ import threading
 
 db = None
 
-def setup_database(args):
+def setup_database(args,ignore_missing=False):
     global db
+    if not ignore_missing and not os.path.exists(args.db):
+        print('Please create a database file before using slurm_hog.py.')
+        sys.exit(1)
     db = apsw.Connection(args.db)
-    db.setbusytimeout(60000) #ms
+    db.setbusytimeout(args.timeout*1000) #ms
 
 def sub_wait(subproc,semp):
     subproc.wait()
@@ -23,7 +26,7 @@ def init(args):
     if os.path.exists(args.db):
         print('Database file already exists. First delete it to create a new one.')
         sys.exit(1)
-    setup_database(args)
+    setup_database(args,ignore_missing=True)
     c = db.cursor()
     c.execute('CREATE TABLE jobs (jobid INTEGER PRIMARY KEY AUTOINCREMENT, exec TEXT, cwd TEXT, stdout TEXT, stderr TEXT, env TEXT, status TEXT, heartbeat INTEGER);')
     c.execute('CREATE INDEX job_status ON jobs(status);')    
@@ -196,7 +199,8 @@ def monitor(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='queues jobs to run in batches on a slurm queue')
-    parser.add_argument('--db',metavar='file',default='jobs.sqlite',help='sqlite database to interact with')
+    parser.add_argument('--db',metavar='FILE',default='jobs.sqlite',help='sqlite database to interact with')
+    parser.add_argument('--timeout',metavar='SECONDS',default=60,help='sqlite database timeout')
     subparsers = parser.add_subparsers(dest='subcommand',metavar='subcommand',help='use `[subcommand] --help` for additional help')
     subparsers.required = True
     
@@ -227,7 +231,7 @@ if __name__ == "__main__":
     hog_parser = subparsers.add_parser('hog',help='the subcommand for jobs submitted to the slurm backend')
     hog_parser.set_defaults(func=hog)
     hog_parser.add_argument('-s','--simultaneous',type=int,default=24,help='number of simultaneous submitted jobs per hog job')
-    hog_parser.add_argument('-t','--time',type=int,default=72,help='max wall time of each hog job (hours)')
+    hog_parser.add_argument('-t','--time',type=int,default=72,metavar='HOURS',help='max wall time of each hog job')
     hog_parser.add_argument('-m','--moratorium',default=12,type=int,help='minimum wall time remaining required to submit a job (hours)')
 
     monitor_parser = subparsers.add_parser('monitor',help='submit and monitor hog jobs on the slurm backend')
@@ -235,8 +239,8 @@ if __name__ == "__main__":
     monitor_parser.add_argument('-c','--command-prefix',default='srun -A fc_oggroup -p savio -t 4320 --mem 64G -N 1 -c 20 --qos savio_normal',help='command prefix (srun ...) to launch hog jobs on compute nodes') #not ideal, could compute -t
     monitor_parser.add_argument('-b','--batches',type=int,default=1,help='number of hog jobs to run at once')
     monitor_parser.add_argument('-s','--simultaneous',type=int,default=20,help='number of simultaneous processes per hog job')
-    monitor_parser.add_argument('-t','--time',type=int,default=72,help='max wall time of each hog job (hours)')
-    monitor_parser.add_argument('-m','--moratorium',default=12,type=int,help='minimum wall time remaining required to submit a job (hours)')
+    monitor_parser.add_argument('-t','--time',type=int,default=72,metavar='HOURS',help='max wall time of each hog job')
+    monitor_parser.add_argument('-m','--moratorium',default=12,type=int,metavar='HOURS',help='minimum wall time remaining required to submit a job')
     
     args = parser.parse_args()
     args.func(args) 
