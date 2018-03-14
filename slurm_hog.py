@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-import sqlite3
+import apsw
 import json
 import time
 import os, sys, signal
@@ -12,7 +12,8 @@ db = None
 
 def setup_database(args):
     global db
-    db = sqlite3.connect(args.db)
+    db = apsw.Connection(args.db)
+    db.setbusytimeout(60000) #ms
 
 def sub_wait(subproc,semp):
     subproc.wait()
@@ -27,7 +28,6 @@ def init(args):
     c.execute('CREATE TABLE jobs (jobid INTEGER PRIMARY KEY AUTOINCREMENT, exec TEXT, cwd TEXT, stdout TEXT, stderr TEXT, env TEXT, status TEXT, heartbeat INTEGER);')
     c.execute('CREATE INDEX job_status ON jobs(status);')    
     c.execute('CREATE INDEX job_heartbeat ON jobs(heartbeat,status);')
-    db.commit()
     
 def submit(args):
     setup_database(args)
@@ -35,13 +35,11 @@ def submit(args):
     env = json.dumps(dict(**os.environ))
     c = db.cursor()
     c.execute("INSERT INTO jobs (exec,cwd,stdout,stderr,env,status,heartbeat) VALUES (?,?,?,?,?,'waiting',0);",(args.executable,cwd,args.stdout,args.stderr,env))
-    db.commit()
 
 def cancel(args):
     setup_database(args)
     c = db.cursor()
-    c.execute('DELETE FROM jobs WHERE jobid = ?;',(args.jobid,))
-    db.commit()
+    c.execute("UPDATE jobs SET status='canceled' WHERE jobid = ?;",(args.jobid,))
 
 def hog_launch(semp,executable,cwd,stdout,stderr,env):
     try:
@@ -66,10 +64,11 @@ def hog_alloc(jobs,semp):
         row = c.fetchone()
         if row is None:
             semp.release()
+            c.execute("COMMIT;")
             break
         jobid,executable,cwd,stdout,stderr,env = row
         c.execute("UPDATE jobs SET status='running',heartbeat=? WHERE jobid = ?;",(time.time(),jobid))
-        db.commit()
+        c.execute("COMMIT;")
         subproc = hog_launch(semp,executable,cwd,stdout,stderr,env)
         if subproc:
             print('allocated',jobid,executable)
@@ -77,7 +76,6 @@ def hog_alloc(jobs,semp):
         else:
             print('failed to allocate',jobid)
             c.execute("UPDATE jobs SET status='failed' WHERE jobid = ?;",(jobid,))
-            db.commit()
 
 def hog_check(jobs):
     c = db.cursor()
@@ -90,7 +88,10 @@ def hog_check(jobs):
         status = c.fetchone()[0]
         if status == 'canceled':
             print('canceled',jobid)
-            os.killpg(os.getpgid(subproc.pid), signal.SIGTERM) #does this release semp?
+            try:
+                os.killpg(os.getpgid(subproc.pid), signal.SIGTERM) #does this release semp?
+            except:
+                print('could not kill',jobid)
             del jobs[jobid]
             continue
         status = subproc.poll()
@@ -101,8 +102,7 @@ def hog_check(jobs):
             print('finished',jobid)
             c.execute("UPDATE jobs SET status='done',heartbeat=? WHERE jobid = ?;",(time.time(),jobid))
             del jobs[jobid]
-    db.commit()
-            
+
 def hog(args):
     setup_database(args)
     semp = threading.Semaphore(value=args.simultaneous)
@@ -132,8 +132,10 @@ def hog(args):
             print('outoftime',jobid)
             c.execute("UPDATE jobs SET status='outoftime' WHERE jobid = ?;",(jobid,))
             subproc = jobs[jobid]
-            os.killpg(os.getpgid(subproc.pid), signal.SIGTERM) #does this release semp?
-        db.commit()
+            try:
+                os.killpg(os.getpgid(subproc.pid), signal.SIGTERM) #does this release semp?
+            except:
+                print('could not kill',jobid)
         
 def monitor_check():
     c = db.cursor()
@@ -142,7 +144,6 @@ def monitor_check():
     stalejobs = [row[0] for row in c.fetchall()]
     for jobid in stalejobs:
         c.execute("UPDATE jobs SET status='stale' WHERE jobid=?",(jobid,))
-    db.commit()
 
 def monitor_launch(semp):
     print(__file__)
