@@ -41,6 +41,35 @@ def cancel(args):
     c = db.cursor()
     c.execute("UPDATE jobs SET status='canceled' WHERE jobid = ?;",(args.jobid,))
 
+def check(args):
+    setup_database(args)
+    c = db.cursor()
+    c.execute("SELECT status FROM jobs WHERE jobid=?;",(args.jobid,))
+    row = c.fetchone()
+    if row is None:
+        print('job',args.jobid,'not in database')
+    else:
+        print(row[0])
+
+def cleanup(args):
+    setup_database(args)
+    c = db.cursor()
+    c.execute("DELETE FROM jobs WHERE status!='waiting' AND status!='running';")
+
+def show(args):
+    setup_database(args)
+    c = db.cursor()
+    if args.status is None:
+        c.execute("SELECT jobid,status FROM jobs;")
+        for jobid,status in c.fetchall():
+            print(jobid,' ',status)
+    else:
+        print(args.status)
+        for status in args.status:
+            c.execute("SELECT jobid,status FROM jobs WHERE status=?",(status,))
+            for jobid,status in c.fetchall():
+                print(jobid,' ',status)
+
 def hog_launch(semp,executable,cwd,stdout,stderr,env):
     try:
         os.chdir(cwd)
@@ -168,11 +197,18 @@ def monitor(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='queues jobs to run in batches on a slurm queue')
     parser.add_argument('--db',metavar='file',default='jobs.sqlite',help='sqlite database to interact with')
-    subparsers = parser.add_subparsers(title='subcommands',dest='subcommand')
+    subparsers = parser.add_subparsers(dest='subcommand',metavar='subcommand',help='use `[subcommand] --help` for additional help')
     subparsers.required = True
     
     init_parser = subparsers.add_parser('init',help='create a new jobs database')
     init_parser.set_defaults(func=init)
+
+    cleanup_parser = subparsers.add_parser('cleanup',help='remove all non-waiting and non-running jobs from database')
+    cleanup_parser.set_defaults(func=cleanup)
+
+    show_parser = subparsers.add_parser('show',help='show jobs in the database')
+    show_parser.set_defaults(func=show)
+    show_parser.add_argument('-s','--status',action='append',default=None,help='job status to show')
     
     submit_parser = subparsers.add_parser('submit',help='submit a job')
     submit_parser.set_defaults(func=submit)
@@ -183,7 +219,11 @@ if __name__ == "__main__":
     cancel_parser = subparsers.add_parser('cancel',help='cancel a job')
     cancel_parser.set_defaults(func=cancel)
     cancel_parser.add_argument('jobid',help='ID of a submitted job')
-    
+
+    check_parser = subparsers.add_parser('check',help='check job status')
+    check_parser.set_defaults(func=check)
+    check_parser.add_argument('jobid',help='ID of a submitted job')
+
     hog_parser = subparsers.add_parser('hog',help='the subcommand for jobs submitted to the slurm backend')
     hog_parser.set_defaults(func=hog)
     hog_parser.add_argument('-s','--simultaneous',type=int,default=24,help='number of simultaneous submitted jobs per hog job')
