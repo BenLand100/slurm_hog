@@ -135,7 +135,7 @@ def hog_check(jobs):
         status = subproc.poll()
         if status is None:
             print('heartbeat',jobid)
-            c.execute('UPDATE jobs SET heartbeat=? WHERE jobid = ?;',(time.time(),jobid))
+            c.execute("UPDATE jobs SET status='running',heartbeat=? WHERE jobid = ?;",(time.time(),jobid))
         else:
             print('finished',jobid)
             c.execute("UPDATE jobs SET status='done',heartbeat=? WHERE jobid = ?;",(time.time(),jobid))
