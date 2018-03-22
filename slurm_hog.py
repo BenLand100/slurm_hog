@@ -73,9 +73,9 @@ def cleanup(args):
 
 def show_hogs(args):
     c = db.cursor()
-    c.execute("SELECT hogid,status,pid FROM hogs;")
-    for hogid,status,pid in c.fetchall():
-        print(hogid,status,pid)
+    c.execute("SELECT hogid,status,pid,hostname FROM hogs;")
+    for hogid,status,pid,hostname in c.fetchall():
+        print(hogid,status,pid,hostname)
 
 def show_jobs(args):
     c = db.cursor()
@@ -245,9 +245,15 @@ def monitor(args):
     try:
         while True:
             monitor_check(external_pids,semp)
-            while semp.acquire(timeout=10):
+            c.execute("SELECT COUNT(*) FROM jobs WHERE status='waiting';")
+            waiting = c.fetchone()[0]
+            print('waiting jobs: ',waiting)
+            while waiting > args.simultaneous and semp.acquire(timeout=10):
+                waiting = waiting - args.simultaneous
                 monitor_launch(args,semp)
                 time.sleep(1)
+            else:
+                time.sleep(60)
     except KeyboardInterrupt:
         print('monitor ctrl-c\'d')
 
